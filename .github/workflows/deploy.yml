@@ -1,9 +1,12 @@
 name: CI/CD Deploy ProstoApp
+
 on:
   push:
     branches: [ "main" ]
+
 env:
   IMAGE_NAME: almuko/prostoapp
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -22,7 +25,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ env.IMAGE_NAME }}:latest
+          tags: 
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
   deploy:
     runs-on: ubuntu-latest
@@ -62,7 +67,7 @@ jobs:
           kubectl delete secret prostoapp-db-secret -n default --ignore-not-found
           kubectl create secret generic prostoapp-db-secret \
             --from-literal=DATABASE_URL='postgres://postgres:Zxcvbnm123@postgres:5432/prostoapp?sslmode=disable'
-
+            
       - name: Cleanup old migration job and pods
         run: |
           if kubectl get job prostoapp-migrate -n default >/dev/null 2>&1; then
@@ -73,14 +78,9 @@ jobs:
           for pod in $(kubectl get pods -n default -l job-name=prostoapp-migrate -o jsonpath='{.items[*].metadata.name}'); do
             kubectl delete pod -n default $pod --ignore-not-found || true
           done
-
-      - name: Deploy App (Migrations + Deployment + Service + Ingress)
+      - name: Run migrations Job
         run: |
-          kubectl apply -f k8s/migrate.yaml -n default
-          kubectl apply -f k8s/prostoapp.yaml -n default
-
-      - name: Wait for migrations to complete
-        run: |
+          kubectl apply -f k8s/migrate.yaml
           echo "⏳ Waiting for migrations to complete..."
           if ! kubectl wait --for=condition=complete job/prostoapp-migrate -n default --timeout=600s; then
             echo "❌ Migration job did not complete. Showing logs from all pods..."
@@ -93,6 +93,12 @@ jobs:
           fi
           echo "✅ Migration job completed successfully."
 
+          echo "🧹 Cleaning up migration job..."
+          kubectl delete job prostoapp-migrate -n default --ignore-not-found
+
+      - name: Deploy App (Deployment + Service + Ingress)
+        run: kubectl apply -f k8s/prostoapp.yaml
+
       - name: Wait for app rollout
         run: kubectl rollout status deployment/prostoapp -n default --timeout=180s
 
@@ -100,17 +106,16 @@ jobs:
         run: |
           echo "⏳ Waiting for TLS certificate prostoapp-tls..."
           kubectl wait --for=condition=Ready certificate/prostoapp-tls -n default --timeout=300s || \
-            (echo "❌ TLS certificate was not issued" && kubectl describe certificate prostoapp-tls -n default && exit 1)
-            
+            (echo "❌ TLS certificate was not issued" && kubectl describe certificate/prostoapp-tls -n default && exit 1)
       - name: Debug protoapp pods if rollout fails
         if: failure()
         run: |
-            kubectl get pods -n default
-            for pod in $(kubectl get pods -n default -l app=protoapp -o jsonpath='{.items[*].metadata.name}'); do
+          kubectl get pods -n default
+          for pod in $(kubectl get pods -n default -l app=protoapp -o jsonpath='{.items[*].metadata.name}'); do
             echo "Logs from $pod"
             kubectl logs -n default $pod --tail=50 || true
             echo "---"
-            done     
+          done
 
       - name: Test API health endpoint
         run: |
