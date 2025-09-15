@@ -5,10 +5,11 @@ metadata:
   namespace: default
 spec:
   backoffLimit: 3
-  ttlSecondsAfterFinished: 300
+  activeDeadlineSeconds: 120
+  ttlSecondsAfterFinished: 60
   template:
     spec:
-      restartPolicy: Never
+      restartPolicy: Never  
       initContainers:
         - name: wait-for-postgres
           image: postgres:17-alpine
@@ -25,7 +26,7 @@ spec:
         - name: migrate
           image: almuko/prostoapp:latest
           workingDir: /app
-          command: ["sh", "-c", "goose -dir ./migrations postgres \"$DATABASE_URL\" up"]
+          command: ["sh", "-c", "goose -dir ./migrations postgres $DATABASE_URL up"]
           env:
             - name: DATABASE_URL
               valueFrom:
