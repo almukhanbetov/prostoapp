@@ -1,11 +1,11 @@
-name: CI/CD Deploy SimpleApp
+name: CI/CD Deploy ProstoApp
 
 on:
   push:
     branches: [ "main" ]
 
 env:
-  IMAGE_NAME: almuko/simpleapp
+  IMAGE_NAME: almuko/prostoapp
 
 jobs:
   build-and-push:
@@ -60,34 +60,34 @@ jobs:
             echo "✅ Postgres already exists. Skipping creation."
           fi
 
-      - name: Recreate simpleapp-db-secret
+      - name: Recreate prostoapp-db-secret
         run: |
-          kubectl delete secret simpleapp-db-secret -n default --ignore-not-found
-          kubectl create secret generic simpleapp-db-secret \
-            --from-literal=DATABASE_URL='postgres://postgres:Zxcvbnm123@postgres:5432/simpleapp?sslmode=disable'
+          kubectl delete secret prostoapp-db-secret -n default --ignore-not-found
+          kubectl create secret generic prostoapp-db-secret \
+            --from-literal=DATABASE_URL='postgres://postgres:Zxcvbnm123@postgres:5432/prostoapp?sslmode=disable'
 
       - name: Cleanup old migration job and pods
         run: |
-          if kubectl get job simpleapp-migrate -n default >/dev/null 2>&1; then
+          if kubectl get job prostoapp-migrate -n default >/dev/null 2>&1; then
             echo "🗑 Deleting old migration job..."
-            kubectl delete job simpleapp-migrate -n default
+            kubectl delete job prostoapp-migrate -n default
           fi
           echo "🧹 Cleaning up old migration pods..."
-          for pod in $(kubectl get pods -n default -l job-name=simpleapp-migrate -o jsonpath='{.items[*].metadata.name}'); do
+          for pod in $(kubectl get pods -n default -l job-name=prostoapp-migrate -o jsonpath='{.items[*].metadata.name}'); do
             kubectl delete pod -n default $pod --ignore-not-found || true
           done
 
       - name: Deploy App (Migrations + Deployment + Service + Ingress)
         run: |
           kubectl apply -f k8s/migrate.yaml -n default
-          kubectl apply -f k8s/simpleapp.yaml -n default
+          kubectl apply -f k8s/prostoapp.yaml -n default
 
       - name: Wait for migrations to complete
         run: |
           echo "⏳ Waiting for migrations to complete..."
-          if ! kubectl wait --for=condition=complete job/simpleapp-migrate -n default --timeout=600s; then
+          if ! kubectl wait --for=condition=complete job/prostoapp-migrate -n default --timeout=600s; then
             echo "❌ Migration job did not complete. Showing logs from all pods..."
-            for pod in $(kubectl get pods -n default -l job-name=simpleapp-migrate -o jsonpath='{.items[*].metadata.name}'); do
+            for pod in $(kubectl get pods -n default -l job-name=prostoapp-migrate -o jsonpath='{.items[*].metadata.name}'); do
               echo "🔹 Logs from pod: $pod"
               kubectl logs -n default $pod || true
               echo "--------------------------------------"
@@ -97,18 +97,18 @@ jobs:
           echo "✅ Migration job completed successfully."
 
       - name: Wait for app rollout
-        run: kubectl rollout status deployment/simpleapp -n default --timeout=180s
+        run: kubectl rollout status deployment/prostoapp -n default --timeout=180s
 
       - name: Wait for TLS certificate
         run: |
-          echo "⏳ Waiting for TLS certificate simpleapp-tls..."
-          kubectl wait --for=condition=Ready certificate/simpleapp-tls -n default --timeout=300s || \
-            (echo "❌ TLS certificate was not issued" && kubectl describe certificate simpleapp-tls -n default && exit 1)
+          echo "⏳ Waiting for TLS certificate prostoapp-tls..."
+          kubectl wait --for=condition=Ready certificate/prostoapp-tls -n default --timeout=300s || \
+            (echo "❌ TLS certificate was not issued" && kubectl describe certificate prostoapp-tls -n default && exit 1)
 
       - name: Test API health endpoint
         run: |
           echo "🌍 Testing API endpoint..."
-          curl -vk --retry 5 --retry-delay 10 https://simpleapp.compnet.kz/health | grep '"status":"ok"'
+          curl -vk --retry 5 --retry-delay 10 https://prostoapp.compnet.kz/health | grep '"status":"ok"'
 
       - name: Show Ingress and endpoints
         run: |
