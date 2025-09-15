@@ -1,12 +1,9 @@
 name: CI/CD Deploy ProstoApp
-
 on:
   push:
     branches: [ "main" ]
-
 env:
   IMAGE_NAME: almuko/prostoapp
-
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
