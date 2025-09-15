@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: prostoapp-db-secret
+  namespace: default
+type: Opaque
+stringData:
+  DATABASE_URL: "postgres://postgres:Zxcvbnm123@postgres:5432/prostoapp?sslmode=disable"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prostoapp
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prostoapp
+  template:
+    metadata:
+      labels:
+        app: prostoapp
+    spec:
+      containers:
+        - name: app
+          image: almuko/prostoapp:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: prostoapp-db-secret
+                  key: DATABASE_URL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prostoapp
+  namespace: default
+spec:
+  selector:
+    app: prostoapp
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prostoapp-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - prostoapp.compnet.kz
+      secretName: prostoapp-tls
+  rules:
+    - host: prostoapp.compnet.kz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: prostoapp
+                port:
+                  number: 80
